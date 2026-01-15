@@ -2,7 +2,8 @@
 
 use ndarray::{Array1, Array2};
 use crate::errors::Result;
-use super::{forward_algorithm, backward_algorithm};
+use crate::utils::normalize_vector;
+// Forward and backward algorithms are used by callers, not directly here
 
 /// Baum-Welch algorithm for HMM parameter estimation
 ///
@@ -58,14 +59,14 @@ pub fn compute_gamma(alpha: &Array2<f64>, beta: &Array2<f64>) -> Result<Array2<f
     let mut gamma = Array2::zeros((n_samples, n_states));
 
     for t in 0..n_samples {
-        let mut sum = 0.0;
         for i in 0..n_states {
             gamma[[t, i]] = alpha[[t, i]] * beta[[t, i]];
-            sum += gamma[[t, i]];
         }
-        // Normalize
+        // Normalize using utility function
+        let row = gamma.row(t).to_owned();
+        let normalized_row = normalize_vector(row);
         for i in 0..n_states {
-            gamma[[t, i]] /= sum;
+            gamma[[t, i]] = normalized_row[i];
         }
     }
 

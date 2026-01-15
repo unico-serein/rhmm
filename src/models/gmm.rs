@@ -3,6 +3,7 @@
 use ndarray::{Array1, Array2};
 use crate::base::{HiddenMarkovModel, CovarianceType};
 use crate::errors::{Result, HmmError};
+use crate::utils::validate_observations;
 
 /// Gaussian Mixture Model Hidden Markov Model
 ///
@@ -12,6 +13,7 @@ pub struct GMMHMM {
     n_states: usize,
     n_features: usize,
     n_mix: usize,
+    #[allow(dead_code)]
     covariance_type: CovarianceType,
     is_fitted: bool,
 }
@@ -56,6 +58,12 @@ impl HiddenMarkovModel for GMMHMM {
         }
 
         self.n_features = observations.ncols();
+        
+        // Validate observations if n_features was already set
+        if self.n_features > 0 {
+            validate_observations(observations, self.n_features)?;
+        }
+        
         self.is_fitted = true;
 
         // TODO: Implement GMM-HMM training

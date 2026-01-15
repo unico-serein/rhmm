@@ -3,6 +3,7 @@
 use ndarray::{Array1, Array2};
 use crate::base::HiddenMarkovModel;
 use crate::errors::{Result, HmmError};
+use crate::utils::validate_observations;
 
 /// Multinomial Hidden Markov Model
 ///
@@ -46,6 +47,9 @@ impl HiddenMarkovModel for MultinomialHMM {
                 "Observations cannot be empty".to_string(),
             ));
         }
+        
+        // Validate observations dimensions
+        validate_observations(observations, self.n_features)?;
 
         self.is_fitted = true;
 

@@ -1,6 +1,6 @@
 //! Backward algorithm implementation
 
-use ndarray::{Array1, Array2};
+use ndarray::Array2;
 use crate::errors::Result;
 
 /// Compute backward probabilities (beta values)

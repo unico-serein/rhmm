@@ -8,4 +8,4 @@ pub mod baum_welch;
 pub use forward::forward_algorithm;
 pub use backward::backward_algorithm;
 pub use viterbi::viterbi_algorithm;
-pub use baum_welch::baum_welch;
+pub use baum_welch::{baum_welch, compute_gamma};

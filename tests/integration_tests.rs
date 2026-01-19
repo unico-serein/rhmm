@@ -114,9 +114,13 @@ fn test_multiple_sequences() {
 fn test_error_handling() {
     let mut hmm = GaussianHMM::new(2);
     
-    // Test with empty observations
-    let empty_obs = array![[]];
+    // Test with empty observations (0 rows)
+    let empty_obs = ndarray::Array2::<f64>::zeros((0, 2));
     assert!(hmm.fit(&empty_obs, None).is_err());
+    
+    // Test with observations that have 0 columns
+    let empty_cols = array![[]];
+    assert!(hmm.fit(&empty_cols, None).is_err());
     
     // Test prediction before fitting
     let obs = array![[1.0, 2.0]];

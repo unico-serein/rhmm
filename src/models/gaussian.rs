@@ -197,10 +197,10 @@ impl GaussianHMM {
         let n_samples = observations.nrows();
         
         // Initialize means by randomly selecting observations
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut means = Array2::zeros((self.n_states, self.n_features));
         for i in 0..self.n_states {
-            let idx = rng.gen_range(0..n_samples);
+            let idx = rng.random_range(0..n_samples);
             means.row_mut(i).assign(&observations.row(idx));
         }
         self.means = Some(means);
@@ -373,7 +373,7 @@ impl HiddenMarkovModel for GaussianHMM {
     }
 
     fn fit(&mut self, observations: &Array2<f64>, _lengths: Option<&[usize]>) -> Result<()> {
-        if observations.nrows() == 0 {
+        if observations.nrows() == 0 || observations.ncols() == 0 {
             return Err(HmmError::InvalidParameter(
                 "Observations cannot be empty".to_string(),
             ));
@@ -511,7 +511,7 @@ impl HiddenMarkovModel for GaussianHMM {
             ));
         }
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut observations = Array2::zeros((n_samples, self.n_features));
         let mut states = Array1::zeros(n_samples);
 
@@ -522,7 +522,7 @@ impl HiddenMarkovModel for GaussianHMM {
 
         // Sample initial state
         let mut cumsum = 0.0;
-        let r: f64 = rng.gen();
+        let r: f64 = rng.random();
         let mut current_state = 0;
         for i in 0..self.n_states {
             cumsum += start_prob[i];
@@ -547,7 +547,7 @@ impl HiddenMarkovModel for GaussianHMM {
         for t in 1..n_samples {
             // Sample next state
             let mut cumsum = 0.0;
-            let r: f64 = rng.gen();
+            let r: f64 = rng.random();
             for i in 0..self.n_states {
                 cumsum += trans_mat[[current_state, i]];
                 if r < cumsum {

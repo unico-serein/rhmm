@@ -222,7 +222,7 @@ impl BetaHMM {
     /// Initialize parameters using method of moments
     fn initialize_parameters(&mut self, observations: &Array2<f64>) -> Result<()> {
         let n_samples = observations.nrows();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         
         // Initialize alpha and beta parameters
         let mut alphas = Array2::zeros((self.n_states, self.n_features));
@@ -233,7 +233,7 @@ impl BetaHMM {
                 // Randomly assign observations to states for initialization
                 let mut state_obs = Vec::new();
                 for t in 0..n_samples {
-                    if rng.gen::<f64>() < 1.0 / self.n_states as f64 {
+                    if rng.random::<f64>() < 1.0 / self.n_states as f64 {
                         state_obs.push(observations[[t, j]]);
                     }
                 }
@@ -425,7 +425,7 @@ impl HiddenMarkovModel for BetaHMM {
     }
 
     fn fit(&mut self, observations: &Array2<f64>, _lengths: Option<&[usize]>) -> Result<()> {
-        if observations.nrows() == 0 {
+        if observations.nrows() == 0 || observations.ncols() == 0 {
             return Err(HmmError::InvalidParameter(
                 "Observations cannot be empty".to_string(),
             ));
@@ -563,7 +563,7 @@ impl HiddenMarkovModel for BetaHMM {
         }
 
         use rand_distr::{Distribution, Beta as BetaDist};
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         
         let mut observations = Array2::zeros((n_samples, self.n_features));
         let mut states = Array1::zeros(n_samples);
@@ -575,7 +575,7 @@ impl HiddenMarkovModel for BetaHMM {
 
         // Sample initial state
         let mut cumsum = 0.0;
-        let r: f64 = rng.gen();
+        let r: f64 = rng.random();
         let mut current_state = 0;
         for i in 0..self.n_states {
             cumsum += start_prob[i];
@@ -600,7 +600,7 @@ impl HiddenMarkovModel for BetaHMM {
         for t in 1..n_samples {
             // Sample next state based on transition probabilities
             let mut cumsum = 0.0;
-            let r: f64 = rng.gen();
+            let r: f64 = rng.random();
             for i in 0..self.n_states {
                 cumsum += trans_mat[[current_state, i]];
                 if r < cumsum {

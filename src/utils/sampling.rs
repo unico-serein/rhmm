@@ -24,7 +24,7 @@ pub fn sample_discrete<R: Rng>(probs: &Array1<f64>, rng: &mut R) -> Result<usize
     }
 
     let mut cumsum = 0.0;
-    let rand_val: f64 = rng.gen();
+    let rand_val: f64 = rng.random();
 
     for (i, &p) in probs.iter().enumerate() {
         cumsum += p;

@@ -60,17 +60,17 @@ pub fn validate_observations(
     observations: &Array2<f64>,
     expected_features: usize,
 ) -> Result<()> {
+    if observations.nrows() == 0 || observations.ncols() == 0 {
+        return Err(HmmError::InvalidParameter(
+            "Observations cannot be empty".to_string(),
+        ));
+    }
+
     if observations.ncols() != expected_features {
         return Err(HmmError::DimensionMismatch {
             expected: expected_features,
             actual: observations.ncols(),
         });
-    }
-
-    if observations.nrows() == 0 {
-        return Err(HmmError::InvalidParameter(
-            "Observations cannot be empty".to_string(),
-        ));
     }
 
     Ok(())

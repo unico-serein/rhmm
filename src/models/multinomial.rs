@@ -42,7 +42,7 @@ impl HiddenMarkovModel for MultinomialHMM {
     }
 
     fn fit(&mut self, observations: &Array2<f64>, _lengths: Option<&[usize]>) -> Result<()> {
-        if observations.nrows() == 0 {
+        if observations.nrows() == 0 || observations.ncols() == 0 {
             return Err(HmmError::InvalidParameter(
                 "Observations cannot be empty".to_string(),
             ));

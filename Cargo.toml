@@ -1,14 +1,21 @@
 [package]
 name = "rhmm"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+repository = "https://github.com/you/your_crate"
+readme = "README.md"           
+license = "MIT"
+keywords = ["hmm", "hidden markov model", "machine learning", "statistics"]
+categories = ["machine-learning", "statistics"]
+authors = ["YanXu Fu <unico-serein@hotmail.com>"]
+
 
 [dependencies]
-ndarray = "0.15"
-ndarray-linalg = "0.16"
-rand = "0.8"
-rand_distr = "0.4"
-thiserror = "1.0"
+ndarray = "0.17.2"
+ndarray-linalg = "0.18.1"
+rand = "0.9.2"
+rand_distr = "0.5.1"
+thiserror = "2.0.18"
 serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]

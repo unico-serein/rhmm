@@ -37,8 +37,8 @@ pub fn exp_normalize(log_probs: &Array1<f64>) -> Array1<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
     use approx::assert_relative_eq;
+    use ndarray::array;
 
     #[test]
     fn test_normalize_vector() {
@@ -59,12 +59,9 @@ mod tests {
 
     #[test]
     fn test_normalize_matrix_rows() {
-        let matrix = array![
-            [1.0, 2.0, 3.0],
-            [4.0, 5.0, 6.0]
-        ];
+        let matrix = array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
         let normalized = normalize_matrix_rows(matrix);
-        
+
         for i in 0..normalized.nrows() {
             let row_sum: f64 = normalized.row(i).sum();
             assert_relative_eq!(row_sum, 1.0, epsilon = 1e-10);
@@ -75,7 +72,7 @@ mod tests {
     fn test_log_normalize() {
         let probs = array![0.5, 0.3, 0.2];
         let log_probs = log_normalize(&probs);
-        
+
         assert_relative_eq!(log_probs[0], 0.5_f64.ln(), epsilon = 1e-10);
         assert_relative_eq!(log_probs[1], 0.3_f64.ln(), epsilon = 1e-10);
         assert_relative_eq!(log_probs[2], 0.2_f64.ln(), epsilon = 1e-10);
@@ -85,7 +82,7 @@ mod tests {
     fn test_log_normalize_zero() {
         let probs = array![0.5, 0.0, 0.2];
         let log_probs = log_normalize(&probs);
-        
+
         assert_relative_eq!(log_probs[0], 0.5_f64.ln(), epsilon = 1e-10);
         assert_eq!(log_probs[1], f64::NEG_INFINITY);
         assert_relative_eq!(log_probs[2], 0.2_f64.ln(), epsilon = 1e-10);
@@ -95,7 +92,7 @@ mod tests {
     fn test_exp_normalize() {
         let log_probs = array![-0.693147, -1.203973, -1.609438];
         let probs = exp_normalize(&log_probs);
-        
+
         assert_relative_eq!(probs.sum(), 1.0, epsilon = 1e-6);
         assert_relative_eq!(probs[0], 0.5, epsilon = 1e-6);
         assert_relative_eq!(probs[1], 0.3, epsilon = 1e-6);

@@ -1,10 +1,12 @@
 //! Beta Hidden Markov Model
 
+use crate::algorithms::{backward_algorithm, compute_gamma, forward_algorithm, viterbi_algorithm};
+use crate::base::{HiddenMarkovModel, InitialProbs, TransitionMatrix};
+use crate::errors::{HmmError, Result};
+use crate::utils::{
+    validate_observations, validate_probability_vector, validate_transition_matrix,
+};
 use ndarray::{Array1, Array2, Axis};
-use crate::base::{HiddenMarkovModel, TransitionMatrix, InitialProbs};
-use crate::errors::{Result, HmmError};
-use crate::algorithms::{forward_algorithm, backward_algorithm, viterbi_algorithm, compute_gamma};
-use crate::utils::{validate_observations, validate_probability_vector, validate_transition_matrix};
 use rand::Rng;
 use std::f64::consts::PI;
 
@@ -134,9 +136,10 @@ impl BetaHMM {
         // Validate observations are in (0, 1)
         for val in observations.iter() {
             if *val <= 0.0 || *val >= 1.0 {
-                return Err(HmmError::InvalidParameter(
-                    format!("Beta HMM requires observations in range (0, 1), got {}", val)
-                ));
+                return Err(HmmError::InvalidParameter(format!(
+                    "Beta HMM requires observations in range (0, 1), got {}",
+                    val
+                )));
             }
         }
 
@@ -178,14 +181,14 @@ impl BetaHMM {
         for i in 0..n_features {
             let a = alpha[i].max(1e-6); // Ensure positive parameters
             let b = beta[i].max(1e-6);
-            let xi = x[i].max(1e-10).min(1.0 - 1e-10); // Clamp to (0, 1)
+            let xi = x[i].clamp(1e-10, 1.0 - 1e-10); // Clamp to (0, 1)
 
             // Compute log PDF to avoid numerical issues
             // log PDF = (α-1)*log(x) + (β-1)*log(1-x) - log B(α, β)
             // log B(α, β) = log Γ(α) + log Γ(β) - log Γ(α+β)
             let log_beta_func = Self::log_gamma(a) + Self::log_gamma(b) - Self::log_gamma(a + b);
             let log_pdf = (a - 1.0) * xi.ln() + (b - 1.0) * (1.0 - xi).ln() - log_beta_func;
-            
+
             log_prob += log_pdf;
         }
 
@@ -199,7 +202,7 @@ impl BetaHMM {
         if x <= 0.0 {
             return f64::NEG_INFINITY;
         }
-        
+
         // Use Stirling's approximation for large x
         if x > 10.0 {
             (x - 0.5) * x.ln() - x + 0.5 * (2.0 * PI).ln()
@@ -208,13 +211,13 @@ impl BetaHMM {
             // This is a simplified version; for production, use a proper gamma function library
             let mut result = 0.0;
             let mut z = x;
-            
+
             // Shift to larger value using Γ(x+1) = x * Γ(x)
             while z < 10.0 {
                 result -= z.ln();
                 z += 1.0;
             }
-            
+
             result + (z - 0.5) * z.ln() - z + 0.5 * (2.0 * PI).ln()
         }
     }
@@ -223,11 +226,11 @@ impl BetaHMM {
     fn initialize_parameters(&mut self, observations: &Array2<f64>) -> Result<()> {
         let n_samples = observations.nrows();
         let mut rng = rand::rng();
-        
+
         // Initialize alpha and beta parameters
         let mut alphas = Array2::zeros((self.n_states, self.n_features));
         let mut betas = Array2::zeros((self.n_states, self.n_features));
-        
+
         for i in 0..self.n_states {
             for j in 0..self.n_features {
                 // Randomly assign observations to states for initialization
@@ -237,19 +240,20 @@ impl BetaHMM {
                         state_obs.push(observations[[t, j]]);
                     }
                 }
-                
+
                 if state_obs.is_empty() {
                     // Fallback: use overall statistics
                     let col = observations.column(j);
                     let mean = col.mean().unwrap_or(0.5);
-                    let var = col.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n_samples as f64;
+                    let var =
+                        col.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n_samples as f64;
                     let (a, b) = Self::moments_to_params(mean, var);
                     alphas[[i, j]] = a;
                     betas[[i, j]] = b;
                 } else {
                     // Use method of moments for this state
                     let mean = state_obs.iter().sum::<f64>() / state_obs.len() as f64;
-                    let var = state_obs.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() 
+                    let var = state_obs.iter().map(|&x| (x - mean).powi(2)).sum::<f64>()
                         / state_obs.len() as f64;
                     let (a, b) = Self::moments_to_params(mean, var);
                     alphas[[i, j]] = a;
@@ -257,10 +261,10 @@ impl BetaHMM {
                 }
             }
         }
-        
+
         self.alphas = Some(alphas);
         self.betas = Some(betas);
-        
+
         Ok(())
     }
 
@@ -270,13 +274,13 @@ impl BetaHMM {
     /// α = μ * ((μ * (1 - μ) / σ²) - 1)
     /// β = (1 - μ) * ((μ * (1 - μ) / σ²) - 1)
     fn moments_to_params(mean: f64, var: f64) -> (f64, f64) {
-        let mean = mean.max(0.01).min(0.99); // Clamp to valid range
+        let mean = mean.clamp(0.01, 0.99); // Clamp to valid range
         let var = var.max(1e-6).min(mean * (1.0 - mean) * 0.99); // Ensure valid variance
-        
+
         let common = (mean * (1.0 - mean) / var) - 1.0;
         let alpha = (mean * common).max(0.5); // Ensure minimum value
         let beta = ((1.0 - mean) * common).max(0.5);
-        
+
         (alpha, beta)
     }
 
@@ -307,10 +311,10 @@ impl BetaHMM {
             let alpha_t = alpha.row(t).insert_axis(Axis(1)); // (n_states, 1)
             let beta_emission = &beta.row(t + 1) * &emission_probs.row(t + 1); // (n_states,)
             let beta_emission = beta_emission.insert_axis(Axis(0)); // (1, n_states)
-            
+
             // xi_t[i,j] = alpha[t,i] * trans[i,j] * emission[t+1,j] * beta[t+1,j]
             let mut xi_t = &alpha_t * transition_matrix * &beta_emission;
-            
+
             // Numerical stable normalization
             let sum = xi_t.sum();
             if sum > 1e-10 {
@@ -319,7 +323,7 @@ impl BetaHMM {
                 // Handle numerical underflow: use uniform distribution
                 xi_t.fill(1.0 / (n_states * n_states) as f64);
             }
-            
+
             xi.push(xi_t);
         }
 
@@ -384,7 +388,7 @@ impl BetaHMM {
         if let (Some(ref mut alphas), Some(ref mut betas)) = (&mut self.alphas, &mut self.betas) {
             for i in 0..n_states {
                 let gamma_sum: f64 = gamma.column(i).sum();
-                
+
                 if gamma_sum > 1e-10 {
                     for j in 0..n_features {
                         // Compute weighted mean
@@ -393,7 +397,7 @@ impl BetaHMM {
                             weighted_mean += gamma[[t, i]] * observations[[t, j]];
                         }
                         weighted_mean /= gamma_sum;
-                        
+
                         // Compute weighted variance
                         let mut weighted_var = 0.0;
                         for t in 0..n_samples {
@@ -401,7 +405,7 @@ impl BetaHMM {
                             weighted_var += gamma[[t, i]] * diff * diff;
                         }
                         weighted_var /= gamma_sum;
-                        
+
                         // Convert to Beta parameters
                         let (alpha, beta) = Self::moments_to_params(weighted_mean, weighted_var);
                         alphas[[i, j]] = alpha;
@@ -432,7 +436,7 @@ impl HiddenMarkovModel for BetaHMM {
         }
 
         self.n_features = observations.ncols();
-        
+
         // Validate observations if n_features was already set
         if self.n_features > 0 {
             validate_observations(observations, self.n_features)?;
@@ -442,7 +446,7 @@ impl HiddenMarkovModel for BetaHMM {
         if self.start_prob.is_none() {
             self.start_prob = Some(Array1::from_elem(self.n_states, 1.0 / self.n_states as f64));
         }
-        
+
         // Validate initial probabilities
         if let Some(ref start_prob) = self.start_prob {
             validate_probability_vector(start_prob, "Initial state probabilities")?;
@@ -454,7 +458,7 @@ impl HiddenMarkovModel for BetaHMM {
                 1.0 / self.n_states as f64,
             ));
         }
-        
+
         // Validate transition matrix
         if let Some(ref trans_mat) = self.transition_matrix {
             validate_transition_matrix(trans_mat)?;
@@ -476,7 +480,7 @@ impl HiddenMarkovModel for BetaHMM {
             // Compute forward and backward probabilities
             let start_prob = self.start_prob.as_ref().unwrap();
             let trans_mat = self.transition_matrix.as_ref().unwrap();
-            
+
             let alpha = forward_algorithm(start_prob, trans_mat, &emission_probs)?;
             let beta = backward_algorithm(trans_mat, &emission_probs)?;
 
@@ -523,7 +527,7 @@ impl HiddenMarkovModel for BetaHMM {
         // Use Viterbi algorithm to find most likely state sequence
         let start_prob = self.start_prob.as_ref().unwrap();
         let trans_mat = self.transition_matrix.as_ref().unwrap();
-        
+
         let (_log_prob, path) = viterbi_algorithm(start_prob, trans_mat, &emission_probs)?;
         Ok(path)
     }
@@ -548,9 +552,9 @@ impl HiddenMarkovModel for BetaHMM {
         // Use forward algorithm to compute log probability
         let start_prob = self.start_prob.as_ref().unwrap();
         let trans_mat = self.transition_matrix.as_ref().unwrap();
-        
+
         let alpha = forward_algorithm(start_prob, trans_mat, &emission_probs)?;
-        
+
         // Log probability is log of sum of final alpha values
         Ok(alpha.row(alpha.nrows() - 1).sum().ln())
     }
@@ -562,9 +566,9 @@ impl HiddenMarkovModel for BetaHMM {
             ));
         }
 
-        use rand_distr::{Distribution, Beta as BetaDist};
+        use rand_distr::{Beta as BetaDist, Distribution};
         let mut rng = rand::rng();
-        
+
         let mut observations = Array2::zeros((n_samples, self.n_features));
         let mut states = Array1::zeros(n_samples);
 
@@ -643,7 +647,7 @@ mod tests {
         let (alpha, beta) = BetaHMM::moments_to_params(0.5, 0.05);
         assert!(alpha > 0.0);
         assert!(beta > 0.0);
-        
+
         // Check that mean is approximately correct
         let mean = alpha / (alpha + beta);
         assert!((mean - 0.5).abs() < 0.1);
@@ -654,7 +658,7 @@ mod tests {
         // Test some known values
         let log_gamma_1 = BetaHMM::log_gamma(1.0);
         assert!((log_gamma_1 - 0.0).abs() < 0.1); // Γ(1) = 1, log(1) = 0
-        
+
         let log_gamma_2 = BetaHMM::log_gamma(2.0);
         assert!((log_gamma_2 - 0.0).abs() < 0.1); // Γ(2) = 1, log(1) = 0
     }
@@ -665,7 +669,7 @@ mod tests {
         let x = array![0.3, 0.7];
         let alpha = array![2.0, 3.0];
         let beta = array![5.0, 2.0];
-        
+
         let pdf = model.beta_pdf(&x.view(), &alpha.view(), &beta.view());
         assert!(pdf.is_ok());
         let pdf_val = pdf.unwrap();
@@ -678,11 +682,11 @@ mod tests {
         let mut model = BetaHMM::new(2);
         model.alphas = Some(array![[2.0, 3.0], [5.0, 4.0]]);
         model.betas = Some(array![[3.0, 2.0], [5.0, 6.0]]);
-        
+
         let means = model.compute_means().unwrap();
         assert_eq!(means.shape(), &[2, 2]);
         assert!((means[[0, 0]] - 0.4).abs() < 0.01); // 2/(2+3) = 0.4
-        
+
         let vars = model.compute_variances().unwrap();
         assert_eq!(vars.shape(), &[2, 2]);
         assert!(vars[[0, 0]] > 0.0);

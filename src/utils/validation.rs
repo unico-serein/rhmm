@@ -1,7 +1,7 @@
 //! Parameter validation utilities
 
+use crate::errors::{HmmError, Result};
 use ndarray::{Array1, Array2};
-use crate::errors::{Result, HmmError};
 
 /// Validate that probabilities sum to 1
 pub fn validate_probability_vector(probs: &Array1<f64>, name: &str) -> Result<()> {
@@ -14,7 +14,7 @@ pub fn validate_probability_vector(probs: &Array1<f64>, name: &str) -> Result<()
     }
 
     for &p in probs.iter() {
-        if p < 0.0 || p > 1.0 {
+        if !(0.0..=1.0).contains(&p) {
             return Err(HmmError::InvalidProbability(format!(
                 "{} contains invalid probability: {}",
                 name, p
@@ -43,7 +43,7 @@ pub fn validate_transition_matrix(matrix: &Array2<f64>) -> Result<()> {
         }
 
         for &p in matrix.row(i).iter() {
-            if p < 0.0 || p > 1.0 {
+            if !(0.0..=1.0).contains(&p) {
                 return Err(HmmError::InvalidProbability(format!(
                     "Transition matrix contains invalid probability: {}",
                     p
@@ -56,10 +56,7 @@ pub fn validate_transition_matrix(matrix: &Array2<f64>) -> Result<()> {
 }
 
 /// Validate observation dimensions
-pub fn validate_observations(
-    observations: &Array2<f64>,
-    expected_features: usize,
-) -> Result<()> {
+pub fn validate_observations(observations: &Array2<f64>, expected_features: usize) -> Result<()> {
     if observations.nrows() == 0 || observations.ncols() == 0 {
         return Err(HmmError::InvalidParameter(
             "Observations cannot be empty".to_string(),
@@ -107,47 +104,31 @@ mod tests {
 
     #[test]
     fn test_validate_transition_matrix_valid() {
-        let matrix = array![
-            [0.7, 0.3],
-            [0.4, 0.6]
-        ];
+        let matrix = array![[0.7, 0.3], [0.4, 0.6]];
         assert!(validate_transition_matrix(&matrix).is_ok());
     }
 
     #[test]
     fn test_validate_transition_matrix_not_square() {
-        let matrix = array![
-            [0.7, 0.3],
-            [0.4, 0.6],
-            [0.5, 0.5]
-        ];
+        let matrix = array![[0.7, 0.3], [0.4, 0.6], [0.5, 0.5]];
         assert!(validate_transition_matrix(&matrix).is_err());
     }
 
     #[test]
     fn test_validate_transition_matrix_row_not_sum_to_one() {
-        let matrix = array![
-            [0.7, 0.2],
-            [0.4, 0.6]
-        ];
+        let matrix = array![[0.7, 0.2], [0.4, 0.6]];
         assert!(validate_transition_matrix(&matrix).is_err());
     }
 
     #[test]
     fn test_validate_observations_valid() {
-        let obs = array![
-            [1.0, 2.0],
-            [3.0, 4.0]
-        ];
+        let obs = array![[1.0, 2.0], [3.0, 4.0]];
         assert!(validate_observations(&obs, 2).is_ok());
     }
 
     #[test]
     fn test_validate_observations_wrong_features() {
-        let obs = array![
-            [1.0, 2.0],
-            [3.0, 4.0]
-        ];
+        let obs = array![[1.0, 2.0], [3.0, 4.0]];
         assert!(validate_observations(&obs, 3).is_err());
     }
 

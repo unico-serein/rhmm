@@ -1,8 +1,8 @@
 //! Baum-Welch algorithm implementation
 
-use ndarray::{Array1, Array2};
 use crate::errors::Result;
 use crate::utils::normalize_vector;
+use ndarray::{Array1, Array2};
 // Forward and backward algorithms are used by callers, not directly here
 
 /// Baum-Welch algorithm for HMM parameter estimation
@@ -32,7 +32,7 @@ pub fn baum_welch(
 ) -> Result<usize> {
     // TODO: Implement full Baum-Welch algorithm
     // This is a placeholder that returns immediately
-    
+
     // The full implementation would:
     // 1. E-step: Compute forward and backward probabilities
     // 2. Compute gamma (state occupation probabilities)

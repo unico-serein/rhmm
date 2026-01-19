@@ -1,10 +1,12 @@
 //! Gaussian Hidden Markov Model
 
+use crate::algorithms::{backward_algorithm, compute_gamma, forward_algorithm, viterbi_algorithm};
+use crate::base::{CovarianceType, HiddenMarkovModel, InitialProbs, TransitionMatrix};
+use crate::errors::{HmmError, Result};
+use crate::utils::{
+    validate_observations, validate_probability_vector, validate_transition_matrix,
+};
 use ndarray::{Array1, Array2};
-use crate::base::{HiddenMarkovModel, CovarianceType, TransitionMatrix, InitialProbs};
-use crate::errors::{Result, HmmError};
-use crate::algorithms::{forward_algorithm, backward_algorithm, viterbi_algorithm, compute_gamma};
-use crate::utils::{validate_observations, validate_probability_vector, validate_transition_matrix};
 use rand::Rng;
 use rand_distr::{Distribution, Normal};
 use std::f64::consts::PI;
@@ -113,12 +115,14 @@ impl GaussianHMM {
         let n_samples = observations.nrows();
         let mut emission_probs = Array2::zeros((n_samples, self.n_states));
 
-        let means = self.means.as_ref().ok_or_else(|| {
-            HmmError::ModelNotFitted("Means not initialized".to_string())
-        })?;
-        let covars = self.covars.as_ref().ok_or_else(|| {
-            HmmError::ModelNotFitted("Covariances not initialized".to_string())
-        })?;
+        let means = self
+            .means
+            .as_ref()
+            .ok_or_else(|| HmmError::ModelNotFitted("Means not initialized".to_string()))?;
+        let covars = self
+            .covars
+            .as_ref()
+            .ok_or_else(|| HmmError::ModelNotFitted("Covariances not initialized".to_string()))?;
 
         for t in 0..n_samples {
             let obs = observations.row(t);
@@ -150,7 +154,7 @@ impl GaussianHMM {
         covar: &ndarray::ArrayView1<f64>,
     ) -> Result<f64> {
         let n_features = x.len();
-        
+
         match self.covariance_type {
             CovarianceType::Diagonal => {
                 // For diagonal covariance
@@ -174,7 +178,7 @@ impl GaussianHMM {
                 // For spherical covariance (single variance value)
                 let var = covar[0].max(1e-10);
                 let log_prob = -0.5 * n_features as f64 * (2.0 * PI * var).ln();
-                
+
                 let mut mahalanobis = 0.0;
                 for i in 0..n_features {
                     let diff = x[i] - mean[i];
@@ -195,7 +199,7 @@ impl GaussianHMM {
     /// Initialize parameters using k-means-like approach
     fn initialize_parameters(&mut self, observations: &Array2<f64>) -> Result<()> {
         let n_samples = observations.nrows();
-        
+
         // Initialize means by randomly selecting observations
         let mut rng = rand::rng();
         let mut means = Array2::zeros((self.n_states, self.n_features));
@@ -313,7 +317,7 @@ impl GaussianHMM {
                     row_sum += trans_mat[[i, j]];
                 }
 
-                // Normalize 
+                // Normalize
                 if row_sum > 0.0 {
                     for j in 0..n_states {
                         trans_mat[[i, j]] /= row_sum;
@@ -326,7 +330,7 @@ impl GaussianHMM {
         if let Some(ref mut means) = self.means {
             for i in 0..n_states {
                 let gamma_sum: f64 = gamma.column(i).sum();
-                
+
                 if gamma_sum > 0.0 {
                     for j in 0..n_features {
                         let mut weighted_sum = 0.0;
@@ -342,10 +346,10 @@ impl GaussianHMM {
         // Update covariances
         if let Some(ref mut covars) = self.covars {
             let means = self.means.as_ref().unwrap();
-            
+
             for i in 0..n_states {
                 let gamma_sum: f64 = gamma.column(i).sum();
-                
+
                 if gamma_sum > 0.0 {
                     for j in 0..n_features {
                         let mut weighted_var = 0.0;
@@ -380,7 +384,7 @@ impl HiddenMarkovModel for GaussianHMM {
         }
 
         self.n_features = observations.ncols();
-        
+
         // Validate observations if n_features was already set
         if self.n_features > 0 {
             validate_observations(observations, self.n_features)?;
@@ -390,7 +394,7 @@ impl HiddenMarkovModel for GaussianHMM {
         if self.start_prob.is_none() {
             self.start_prob = Some(Array1::from_elem(self.n_states, 1.0 / self.n_states as f64));
         }
-        
+
         // Validate initial probabilities
         if let Some(ref start_prob) = self.start_prob {
             validate_probability_vector(start_prob, "Initial state probabilities")?;
@@ -402,7 +406,7 @@ impl HiddenMarkovModel for GaussianHMM {
                 1.0 / self.n_states as f64,
             ));
         }
-        
+
         // Validate transition matrix
         if let Some(ref trans_mat) = self.transition_matrix {
             validate_transition_matrix(trans_mat)?;
@@ -424,7 +428,7 @@ impl HiddenMarkovModel for GaussianHMM {
             // Compute forward and backward probabilities
             let start_prob = self.start_prob.as_ref().unwrap();
             let trans_mat = self.transition_matrix.as_ref().unwrap();
-            
+
             let alpha = forward_algorithm(start_prob, trans_mat, &emission_probs)?;
             let beta = backward_algorithm(trans_mat, &emission_probs)?;
 
@@ -471,9 +475,9 @@ impl HiddenMarkovModel for GaussianHMM {
         // Use Viterbi algorithm to find most likely state sequence
         let start_prob = self.start_prob.as_ref().unwrap();
         let trans_mat = self.transition_matrix.as_ref().unwrap();
-        
+
         let (_log_prob, path) = viterbi_algorithm(start_prob, trans_mat, &emission_probs)?;
-        
+
         Ok(path)
     }
 
@@ -497,10 +501,10 @@ impl HiddenMarkovModel for GaussianHMM {
         // Use forward algorithm to compute log probability
         let start_prob = self.start_prob.as_ref().unwrap();
         let trans_mat = self.transition_matrix.as_ref().unwrap();
-        
+
         let alpha = forward_algorithm(start_prob, trans_mat, &emission_probs)?;
         let prob: f64 = alpha.row(alpha.nrows() - 1).sum();
-        
+
         Ok(prob.ln())
     }
 
@@ -594,12 +598,8 @@ mod tests {
     #[test]
     fn test_gaussian_hmm_fit() {
         let mut hmm = GaussianHMM::new(2);
-        let observations = array![
-            [1.0, 2.0],
-            [2.0, 3.0],
-            [3.0, 4.0]
-        ];
-        
+        let observations = array![[1.0, 2.0], [2.0, 3.0], [3.0, 4.0]];
+
         assert!(hmm.fit(&observations, None).is_ok());
         assert!(hmm.is_fitted());
         assert_eq!(hmm.n_features(), 2);
@@ -609,45 +609,34 @@ mod tests {
     fn test_gaussian_hmm_fit_empty_observations() {
         let mut hmm = GaussianHMM::new(2);
         let observations = Array2::<f64>::zeros((0, 2));
-        
+
         assert!(hmm.fit(&observations, None).is_err());
     }
 
     #[test]
     fn test_gaussian_hmm_predict_not_fitted() {
         let hmm = GaussianHMM::new(2);
-        let observations = array![
-            [1.0, 2.0],
-            [2.0, 3.0]
-        ];
-        
+        let observations = array![[1.0, 2.0], [2.0, 3.0]];
+
         assert!(hmm.predict(&observations).is_err());
     }
 
     #[test]
     fn test_gaussian_hmm_predict_dimension_mismatch() {
         let mut hmm = GaussianHMM::new(2);
-        let train_obs = array![
-            [1.0, 2.0],
-            [2.0, 3.0]
-        ];
+        let train_obs = array![[1.0, 2.0], [2.0, 3.0]];
         hmm.fit(&train_obs, None).unwrap();
-        
-        let test_obs = array![
-            [1.0, 2.0, 3.0]
-        ];
+
+        let test_obs = array![[1.0, 2.0, 3.0]];
         assert!(hmm.predict(&test_obs).is_err());
     }
 
     #[test]
     fn test_gaussian_hmm_getters() {
         let mut hmm = GaussianHMM::new(2);
-        let observations = array![
-            [1.0, 2.0],
-            [2.0, 3.0]
-        ];
+        let observations = array![[1.0, 2.0], [2.0, 3.0]];
         hmm.fit(&observations, None).unwrap();
-        
+
         assert!(hmm.start_prob().is_some());
         assert!(hmm.transition_matrix().is_some());
         assert!(hmm.means().is_some());

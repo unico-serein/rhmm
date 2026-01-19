@@ -16,12 +16,12 @@
 //! let hmm = GaussianHMM::new(3);
 //! ```
 
-pub mod base;
-pub mod models;
 pub mod algorithms;
-pub mod utils;
+pub mod base;
 pub mod errors;
+pub mod models;
+pub mod utils;
 
 // Re-export commonly used types
-pub use errors::{HmmError, Result};
 pub use base::HiddenMarkovModel;
+pub use errors::{HmmError, Result};

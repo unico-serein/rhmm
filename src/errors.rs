@@ -67,7 +67,10 @@ mod tests {
     #[test]
     fn test_convergence_error() {
         let err = HmmError::ConvergenceError("max iterations reached".to_string());
-        assert_eq!(err.to_string(), "Convergence failed: max iterations reached");
+        assert_eq!(
+            err.to_string(),
+            "Convergence failed: max iterations reached"
+        );
     }
 
     #[test]

@@ -1,9 +1,9 @@
 //! Gaussian Mixture Model Hidden Markov Model
 
-use ndarray::{Array1, Array2};
-use crate::base::{HiddenMarkovModel, CovarianceType};
-use crate::errors::{Result, HmmError};
+use crate::base::{CovarianceType, HiddenMarkovModel};
+use crate::errors::{HmmError, Result};
 use crate::utils::validate_observations;
+use ndarray::{Array1, Array2};
 
 /// Gaussian Mixture Model Hidden Markov Model
 ///
@@ -58,12 +58,12 @@ impl HiddenMarkovModel for GMMHMM {
         }
 
         self.n_features = observations.ncols();
-        
+
         // Validate observations if n_features was already set
         if self.n_features > 0 {
             validate_observations(observations, self.n_features)?;
         }
-        
+
         self.is_fitted = true;
 
         // TODO: Implement GMM-HMM training

@@ -1,7 +1,7 @@
 //! Forward algorithm implementation
 
-use ndarray::{Array1, Array2};
 use crate::errors::Result;
+use ndarray::{Array1, Array2};
 
 /// Compute forward probabilities (alpha values)
 ///
@@ -71,26 +71,19 @@ pub fn forward_log_probability(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
     use approx::assert_relative_eq;
+    use ndarray::array;
 
     #[test]
     fn test_forward_algorithm_simple() {
         let start_prob = array![0.6, 0.4];
-        let transition_matrix = array![
-            [0.7, 0.3],
-            [0.4, 0.6]
-        ];
-        let emission_probs = array![
-            [0.9, 0.1],
-            [0.8, 0.2],
-            [0.7, 0.3]
-        ];
+        let transition_matrix = array![[0.7, 0.3], [0.4, 0.6]];
+        let emission_probs = array![[0.9, 0.1], [0.8, 0.2], [0.7, 0.3]];
 
         let alpha = forward_algorithm(&start_prob, &transition_matrix, &emission_probs).unwrap();
-        
+
         assert_eq!(alpha.shape(), &[3, 2]);
-        
+
         // Check first time step
         assert_relative_eq!(alpha[[0, 0]], 0.6 * 0.9, epsilon = 1e-10);
         assert_relative_eq!(alpha[[0, 1]], 0.4 * 0.1, epsilon = 1e-10);
@@ -99,14 +92,8 @@ mod tests {
     #[test]
     fn test_forward_algorithm_dimensions() {
         let start_prob = array![0.5, 0.5];
-        let transition_matrix = array![
-            [0.7, 0.3],
-            [0.4, 0.6]
-        ];
-        let emission_probs = array![
-            [0.9, 0.1],
-            [0.8, 0.2]
-        ];
+        let transition_matrix = array![[0.7, 0.3], [0.4, 0.6]];
+        let emission_probs = array![[0.9, 0.1], [0.8, 0.2]];
 
         let alpha = forward_algorithm(&start_prob, &transition_matrix, &emission_probs).unwrap();
         assert_eq!(alpha.nrows(), 2);
@@ -116,17 +103,12 @@ mod tests {
     #[test]
     fn test_forward_log_probability() {
         let start_prob = array![0.6, 0.4];
-        let transition_matrix = array![
-            [0.7, 0.3],
-            [0.4, 0.6]
-        ];
-        let emission_probs = array![
-            [0.9, 0.1],
-            [0.8, 0.2]
-        ];
+        let transition_matrix = array![[0.7, 0.3], [0.4, 0.6]];
+        let emission_probs = array![[0.9, 0.1], [0.8, 0.2]];
 
-        let log_prob = forward_log_probability(&start_prob, &transition_matrix, &emission_probs).unwrap();
-        
+        let log_prob =
+            forward_log_probability(&start_prob, &transition_matrix, &emission_probs).unwrap();
+
         // Log probability should be negative
         assert!(log_prob < 0.0);
     }
@@ -134,16 +116,11 @@ mod tests {
     #[test]
     fn test_forward_algorithm_single_observation() {
         let start_prob = array![1.0, 0.0];
-        let transition_matrix = array![
-            [1.0, 0.0],
-            [0.0, 1.0]
-        ];
-        let emission_probs = array![
-            [0.5, 0.5]
-        ];
+        let transition_matrix = array![[1.0, 0.0], [0.0, 1.0]];
+        let emission_probs = array![[0.5, 0.5]];
 
         let alpha = forward_algorithm(&start_prob, &transition_matrix, &emission_probs).unwrap();
-        
+
         assert_eq!(alpha.shape(), &[1, 2]);
         assert_relative_eq!(alpha[[0, 0]], 0.5, epsilon = 1e-10);
         assert_relative_eq!(alpha[[0, 1]], 0.0, epsilon = 1e-10);

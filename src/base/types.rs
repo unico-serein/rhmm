@@ -15,22 +15,17 @@ pub type Observations = Array2<f64>;
 pub type States = Array1<usize>;
 
 /// Covariance type for Gaussian models
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum CovarianceType {
     /// Full covariance matrix
     Full,
     /// Diagonal covariance matrix
+    #[default]
     Diagonal,
     /// Spherical covariance (single variance value)
     Spherical,
     /// Tied covariance (same for all states)
     Tied,
-}
-
-impl Default for CovarianceType {
-    fn default() -> Self {
-        CovarianceType::Diagonal
-    }
 }
 
 #[cfg(test)]

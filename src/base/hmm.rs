@@ -1,7 +1,7 @@
 //! Core HMM trait definition
 
-use ndarray::{Array1, Array2};
 use crate::errors::Result;
+use ndarray::{Array1, Array2};
 
 /// Core trait that all HMM models must implement
 pub trait HiddenMarkovModel {

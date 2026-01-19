@@ -3,10 +3,7 @@
 use crate::algorithms::{backward_algorithm, compute_gamma, forward_algorithm, viterbi_algorithm};
 use crate::base::{CovarianceType, HiddenMarkovModel, InitialProbs, TransitionMatrix};
 use crate::errors::{HmmError, Result};
-use crate::utils::{
-    validate_observations, validate_probability_vector, validate_transition_matrix,
-};
-use ndarray::{Array1, Array2};
+use crate::utils::{validate_observations, validate_probability_vector, validate_transition_matrix, split_sequences, default_lengths};use ndarray::{Array1, Array2};
 use rand::Rng;
 use rand_distr::{Distribution, Normal};
 use std::f64::consts::PI;
@@ -272,59 +269,20 @@ impl GaussianHMM {
         Ok(xi)
     }
 
-    /// Update model parameters based on gamma and xi
+    /// Update emission parameters (means and covariances) based on gamma
     ///
     /// # Arguments
     ///
     /// * `observations` - Observation sequence
     /// * `gamma` - State occupation probabilities
-    /// * `xi` - State transition probabilities
-    fn update_parameters(
+    fn update_emission_parameters(
         &mut self,
         observations: &Array2<f64>,
         gamma: &Array2<f64>,
-        xi: &[Array2<f64>],
     ) -> Result<()> {
         let n_samples = observations.nrows();
         let n_states = self.n_states;
         let n_features = self.n_features;
-
-        // Update initial state probabilities
-        if let Some(ref mut start_prob) = self.start_prob {
-            for i in 0..n_states {
-                start_prob[i] = gamma[[0, i]];
-            }
-        }
-
-        // Update transition matrix
-        if let Some(ref mut trans_mat) = self.transition_matrix {
-            for i in 0..n_states {
-                let mut row_sum = 0.0;
-                for j in 0..n_states {
-                    let mut numerator = 0.0;
-                    let mut denominator = 0.0;
-
-                    for t in 0..n_samples - 1 {
-                        numerator += xi[t][[i, j]];
-                        denominator += gamma[[t, i]];
-                    }
-
-                    trans_mat[[i, j]] = if denominator > 0.0 {
-                        numerator / denominator
-                    } else {
-                        1.0 / n_states as f64
-                    };
-                    row_sum += trans_mat[[i, j]];
-                }
-
-                // Normalize
-                if row_sum > 0.0 {
-                    for j in 0..n_states {
-                        trans_mat[[i, j]] /= row_sum;
-                    }
-                }
-            }
-        }
 
         // Update means
         if let Some(ref mut means) = self.means {
@@ -376,7 +334,7 @@ impl HiddenMarkovModel for GaussianHMM {
         self.n_features
     }
 
-    fn fit(&mut self, observations: &Array2<f64>, _lengths: Option<&[usize]>) -> Result<()> {
+    fn fit(&mut self, observations: &Array2<f64>, lengths: Option<&[usize]>) -> Result<()> {
         if observations.nrows() == 0 || observations.ncols() == 0 {
             return Err(HmmError::InvalidParameter(
                 "Observations cannot be empty".to_string(),
@@ -389,6 +347,12 @@ impl HiddenMarkovModel for GaussianHMM {
         if self.n_features > 0 {
             validate_observations(observations, self.n_features)?;
         }
+
+        // Get sequence lengths (default to single sequence if not provided)
+        let lengths_vec = lengths.map(|l| l.to_vec()).unwrap_or_else(|| default_lengths(observations.nrows()));
+        
+        // Split observations into sequences
+        let sequences = split_sequences(observations, &lengths_vec)?;
 
         // Initialize parameters if not set
         if self.start_prob.is_none() {
@@ -422,33 +386,104 @@ impl HiddenMarkovModel for GaussianHMM {
         let mut prev_log_prob = f64::NEG_INFINITY;
 
         for _iter in 0..max_iter {
-            // E-step: Compute emission probabilities
-            let emission_probs = self.compute_emission_probs(observations)?;
-
-            // Compute forward and backward probabilities
+            let mut total_log_prob = 0.0;
+            
+            // Accumulators for statistics across all sequences
+            let mut start_prob_acc = Array1::zeros(self.n_states);
+            let mut trans_acc = Array2::zeros((self.n_states, self.n_states));
+            let mut gamma_acc = Array2::zeros((observations.nrows(), self.n_states));
+            let mut xi_acc = Vec::new();
+            
             let start_prob = self.start_prob.as_ref().unwrap();
             let trans_mat = self.transition_matrix.as_ref().unwrap();
+            
+            let mut row_offset = 0;
+            
+            // Process each sequence independently
+            for seq in &sequences {
+                let seq_len = seq.nrows();
+                
+                // Convert ArrayView2 to owned Array2 for emission computation
+                let seq_owned = seq.to_owned();
+                
+                // E-step: Compute emission probabilities for this sequence
+                let emission_probs = self.compute_emission_probs(&seq_owned)?;
 
-            let alpha = forward_algorithm(start_prob, trans_mat, &emission_probs)?;
-            let beta = backward_algorithm(trans_mat, &emission_probs)?;
+                // Compute forward and backward probabilities
+                let alpha = forward_algorithm(start_prob, trans_mat, &emission_probs)?;
+                let beta = backward_algorithm(trans_mat, &emission_probs)?;
 
-            // Compute current log probability
-            let log_prob = alpha.row(alpha.nrows() - 1).sum().ln();
+                // Accumulate log probability
+                let seq_log_prob = alpha.row(alpha.nrows() - 1).sum().ln();
+                total_log_prob += seq_log_prob;
+
+                // Compute gamma (state occupation probabilities)
+                let gamma = compute_gamma(&alpha, &beta)?;
+                
+                // Copy gamma to accumulator at correct position
+                for t in 0..seq_len {
+                    for i in 0..self.n_states {
+                        gamma_acc[[row_offset + t, i]] = gamma[[t, i]];
+                    }
+                }
+
+                // Accumulate initial state probabilities from first observation
+                for i in 0..self.n_states {
+                    start_prob_acc[i] += gamma[[0, i]];
+                }
+
+                // Compute xi (state transition probabilities) for this sequence
+                let xi = Self::compute_xi(&alpha, &beta, trans_mat, &emission_probs)?;
+                
+                // Accumulate transition counts (don't cross sequence boundaries)
+                for t in 0..seq_len - 1 {
+                    for i in 0..self.n_states {
+                        for j in 0..self.n_states {
+                            trans_acc[[i, j]] += xi[t][[i, j]];
+                        }
+                    }
+                }
+                
+                // Store xi for this sequence (with offset)
+                for xi_t in xi {
+                    xi_acc.push(xi_t);
+                }
+                
+                row_offset += seq_len;
+            }
 
             // Check convergence
-            if (log_prob - prev_log_prob).abs() < tol {
+            if (total_log_prob - prev_log_prob).abs() < tol {
                 break;
             }
-            prev_log_prob = log_prob;
+            prev_log_prob = total_log_prob;
 
-            // Compute gamma (state occupation probabilities)
-            let gamma = compute_gamma(&alpha, &beta)?;
+            // M-step: Update parameters using accumulated statistics
+            
+            // Update initial state probabilities
+            if let Some(ref mut start_prob) = self.start_prob {
+                let sum: f64 = start_prob_acc.sum();
+                if sum > 0.0 {
+                    for i in 0..self.n_states {
+                        start_prob[i] = start_prob_acc[i] / sum;
+                    }
+                }
+            }
 
-            // Compute xi (state transition probabilities)
-            let xi = Self::compute_xi(&alpha, &beta, trans_mat, &emission_probs)?;
+            // Update transition matrix
+            if let Some(ref mut trans_mat) = self.transition_matrix {
+                for i in 0..self.n_states {
+                    let row_sum: f64 = trans_acc.row(i).sum();
+                    if row_sum > 0.0 {
+                        for j in 0..self.n_states {
+                            trans_mat[[i, j]] = trans_acc[[i, j]] / row_sum;
+                        }
+                    }
+                }
+            }
 
-            // M-step: Update parameters
-            self.update_parameters(observations, &gamma, &xi)?;
+            // Update means and covariances
+            self.update_emission_parameters(observations, &gamma_acc)?;
         }
 
         self.is_fitted = true;

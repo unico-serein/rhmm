@@ -6,8 +6,7 @@ description = "A rust implementation of hidden markov models."
 repository = "https://github.com/unico-serein/rhmm"
 readme = "README.md"           
 license = "MIT"
-keywords = ["hmm", "hidden-markov-model"]
-categories = ["machine-learning", "statistics"]
+keywords = ["hmm", "hidden-markov-model", "machine-learning", "statistics"]
 authors = ["YanXu Fu <unico-serein@hotmail.com>"]
 
 

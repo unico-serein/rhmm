@@ -670,11 +670,15 @@ mod tests {
     #[test]
     fn test_multinomial_hmm_multiple_sequences() {
         let mut hmm = MultinomialHMM::new(2, 3);
-        
+
         // Two sequences concatenated
         let observations = array![
-            [0.0], [1.0], [2.0],  // Sequence 1
-            [2.0], [1.0], [0.0]   // Sequence 2
+            [0.0],
+            [1.0],
+            [2.0], // Sequence 1
+            [2.0],
+            [1.0],
+            [0.0] // Sequence 2
         ];
         let lengths = vec![3, 3];
 
@@ -692,12 +696,18 @@ mod tests {
     #[test]
     fn test_multinomial_hmm_multiple_sequences_different_lengths() {
         let mut hmm = MultinomialHMM::new(2, 4);
-        
+
         // Three sequences with different lengths
         let observations = array![
-            [0.0], [1.0],              // Sequence 1 (length 2)
-            [2.0], [3.0], [0.0],       // Sequence 2 (length 3)
-            [1.0], [2.0], [3.0], [0.0] // Sequence 3 (length 4)
+            [0.0],
+            [1.0], // Sequence 1 (length 2)
+            [2.0],
+            [3.0],
+            [0.0], // Sequence 2 (length 3)
+            [1.0],
+            [2.0],
+            [3.0],
+            [0.0] // Sequence 3 (length 4)
         ];
         let lengths = vec![2, 3, 4];
 
@@ -745,7 +755,7 @@ mod tests {
         hmm.fit(&observations, None).unwrap();
 
         let emission_prob = hmm.emission_prob().unwrap();
-        
+
         // Each row should sum to approximately 1
         for i in 0..2 {
             let row_sum: f64 = emission_prob.row(i).sum();
@@ -760,7 +770,7 @@ mod tests {
         hmm.fit(&observations, None).unwrap();
 
         let trans_mat = hmm.transition_matrix().unwrap();
-        
+
         // Each row should sum to approximately 1
         for i in 0..3 {
             let row_sum: f64 = trans_mat.row(i).sum();

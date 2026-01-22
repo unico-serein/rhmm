@@ -10,8 +10,8 @@ A Rust library for Hidden Markov Models (HMM), inspired by Python's hmmlearn. Th
 - **Multiple HMM Model Types**
   - **Gaussian HMM**: Models continuous data with Gaussian emission distributions
   - **Beta HMM**: Models data in the range [0, 1] (e.g., conversion rates, proportions)
-  - **Multinomial HMM(Not implemented yet, coming soon)**: Models discrete categorical data
-  - **Gaussian Mixture Model HMM (GMM-HMM) (Not implemented yet, coming soon)**: Models complex continuous distributions
+  - **Multinomial HMM**: Models discrete categorical data (e.g., text, DNA sequences)
+  - **Gaussian Mixture Model HMM (GMM-HMM)**: Models complex continuous distributions (coming soon)
 
 - **Standard HMM Algorithms**
   - **Forward Algorithm**: Compute observation probabilities
@@ -118,6 +118,63 @@ fn main() {
 }
 ```
 
+### Multinomial HMM Example (Discrete Sequences)
+
+```rust
+use ndarray::array;
+use rhmm::models::MultinomialHMM;
+use rhmm::base::HiddenMarkovModel;
+
+fn main() {
+    // Discrete observations: integers in [0, n_symbols)
+    // Example: DNA sequence where A=0, C=1, G=2, T=3
+    let observations = array![
+        [0.0], [1.0], [2.0], [3.0], [0.0],
+        [1.0], [2.0], [3.0], [0.0], [1.0]
+    ];
+
+    // Create model with 2 hidden states and 4 possible symbols
+    let mut model = MultinomialHMM::new(2, 4);
+    model.fit(&observations, None).unwrap();
+
+    // Predict hidden states
+    let states = model.predict(&observations).unwrap();
+    println!("Predicted states: {:?}", states);
+
+    // Get emission probabilities
+    if let Some(emission_prob) = model.emission_prob() {
+        println!("Emission probabilities shape: {:?}", emission_prob.shape());
+    }
+
+    // Sample new sequences
+    let (sampled_obs, sampled_states) = model.sample(10).unwrap();
+    println!("Sampled {} observations", sampled_obs.nrows());
+}
+```
+
+### Multiple Sequences Training
+
+All HMM models support training on multiple sequences:
+
+```rust
+use ndarray::array;
+use rhmm::models::MultinomialHMM;
+use rhmm::base::HiddenMarkovModel;
+
+fn main() {
+    // Three sequences concatenated
+    let observations = array![
+        [0.0], [1.0], [2.0],        // Sequence 1 (length 3)
+        [2.0], [1.0], [0.0], [1.0], // Sequence 2 (length 4)
+        [0.0], [2.0]                // Sequence 3 (length 2)
+    ];
+    let lengths = vec![3, 4, 2];
+
+    let mut model = MultinomialHMM::new(2, 3);
+    model.fit(&observations, Some(&lengths)).unwrap();
+}
+```
+
 ## 🎯 Use Cases
 
 ### Gaussian HMM
@@ -184,7 +241,12 @@ let model = BetaHMM::new(n_states);
 
 #### MultinomialHMM
 ```rust
-let model = MultinomialHMM::new(n_states, n_features);
+// n_states: number of hidden states
+// n_symbols: number of possible discrete observation values (vocabulary size)
+let model = MultinomialHMM::new(n_states, n_symbols);
+
+// Access the number of symbols
+let vocab_size = model.n_symbols();
 ```
 
 #### GaussianMixtureHMM

@@ -1,4 +1,57 @@
 //! Multinomial Hidden Markov Model
+//!
+//! This module provides a Hidden Markov Model with discrete/multinomial emission distributions.
+//! It is suitable for modeling sequences of discrete observations, such as:
+//!
+//! - **Natural Language Processing**: Part-of-speech tagging, named entity recognition
+//! - **Bioinformatics**: DNA/RNA sequence analysis
+//! - **User Behavior**: Clickstream analysis, session modeling
+//! - **Weather Modeling**: Discrete weather state sequences
+//!
+//! # Example
+//!
+//! ```rust
+//! use rhmm::models::MultinomialHMM;
+//! use rhmm::base::HiddenMarkovModel;
+//! use ndarray::array;
+//!
+//! // Create a model with 2 hidden states and 3 possible symbols (0, 1, 2)
+//! let mut model = MultinomialHMM::new(2, 3);
+//!
+//! // Training data: discrete observations as integers in [0, n_symbols)
+//! // Each row is one observation, stored as f64 for API consistency
+//! let observations = array![
+//!     [0.0], [1.0], [2.0], [0.0], [1.0],
+//!     [2.0], [2.0], [1.0], [0.0], [0.0]
+//! ];
+//!
+//! // Fit the model
+//! model.fit(&observations, None).unwrap();
+//!
+//! // Predict hidden states
+//! let states = model.predict(&observations).unwrap();
+//!
+//! // Calculate log-likelihood
+//! let score = model.score(&observations).unwrap();
+//! ```
+//!
+//! # Multiple Sequences
+//!
+//! You can train on multiple sequences by concatenating them and providing lengths:
+//!
+//! ```rust
+//! use rhmm::models::MultinomialHMM;
+//! use rhmm::base::HiddenMarkovModel;
+//! use ndarray::array;
+//!
+//! let mut model = MultinomialHMM::new(2, 3);
+//!
+//! // Two sequences concatenated: [0,1,2] and [2,1,0]
+//! let observations = array![[0.0], [1.0], [2.0], [2.0], [1.0], [0.0]];
+//! let lengths = vec![3, 3];
+//!
+//! model.fit(&observations, Some(&lengths)).unwrap();
+//! ```
 
 use crate::algorithms::{backward_algorithm, compute_gamma, forward_algorithm, viterbi_algorithm};
 use crate::base::{HiddenMarkovModel, InitialProbs, TransitionMatrix};
@@ -12,18 +65,42 @@ use rand::Rng;
 /// Multinomial Hidden Markov Model
 ///
 /// A Hidden Markov Model with discrete/multinomial emission distributions.
-/// Suitable for discrete observation sequences.
+/// Suitable for discrete observation sequences where each observation is an integer
+/// in the range `[0, n_symbols)`.
+///
+/// # Type Parameters
+///
+/// - `n_states`: Number of hidden states in the model
+/// - `n_symbols`: Number of possible discrete observation values (vocabulary size)
+///
+/// # Observation Format
+///
+/// Observations should be provided as `Array2<f64>` with shape `(n_samples, 1)`,
+/// where each value is an integer in `[0, n_symbols)` stored as `f64`.
+///
+/// # Example
+///
+/// ```rust
+/// use rhmm::models::MultinomialHMM;
+/// use rhmm::base::HiddenMarkovModel;
+/// use ndarray::array;
+///
+/// let mut model = MultinomialHMM::new(2, 4);  // 2 states, 4 symbols
+/// let obs = array![[0.0], [1.0], [2.0], [3.0], [0.0]];
+/// model.fit(&obs, None).unwrap();
+/// ```
 #[derive(Debug, Clone)]
 pub struct MultinomialHMM {
     /// Number of hidden states
     n_states: usize,
-    /// Number of possible discrete observations (vocabulary size)
-    n_features: usize,
-    /// Initial state probabilities
+    /// Number of possible discrete observations (vocabulary/symbol size)
+    /// Note: This is called n_symbols internally but exposed as n_features for trait compatibility
+    n_symbols: usize,
+    /// Initial state probabilities π[i] = P(state_0 = i)
     start_prob: Option<InitialProbs>,
-    /// State transition matrix
+    /// State transition matrix A[i,j] = P(state_t = j | state_{t-1} = i)
     transition_matrix: Option<TransitionMatrix>,
-    /// Emission probabilities (n_states, n_features)
+    /// Emission probabilities B[i,k] = P(obs_t = k | state_t = i)
     emission_prob: Option<Array2<f64>>,
     /// Whether the model has been fitted
     is_fitted: bool,
@@ -35,11 +112,20 @@ impl MultinomialHMM {
     /// # Arguments
     ///
     /// * `n_states` - Number of hidden states
-    /// * `n_features` - Number of possible discrete observations
-    pub fn new(n_states: usize, n_features: usize) -> Self {
+    /// * `n_symbols` - Number of possible discrete observation values (vocabulary size)
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rhmm::models::MultinomialHMM;
+    ///
+    /// // Create a model for POS tagging with 5 states and 1000 word vocabulary
+    /// let model = MultinomialHMM::new(5, 1000);
+    /// ```
+    pub fn new(n_states: usize, n_symbols: usize) -> Self {
         Self {
             n_states,
-            n_features,
+            n_symbols,
             start_prob: None,
             transition_matrix: None,
             emission_prob: None,
@@ -47,17 +133,32 @@ impl MultinomialHMM {
         }
     }
 
-    /// Get the initial state probabilities
+    /// Get the number of possible symbols (vocabulary size)
+    ///
+    /// This is an alias for `n_features()` with clearer semantics for discrete models.
+    pub fn n_symbols(&self) -> usize {
+        self.n_symbols
+    }
+
+    /// Get the initial state probabilities π
+    ///
+    /// Returns `None` if the model has not been fitted.
     pub fn start_prob(&self) -> Option<&InitialProbs> {
         self.start_prob.as_ref()
     }
 
-    /// Get the transition matrix
+    /// Get the state transition matrix A
+    ///
+    /// Returns `None` if the model has not been fitted.
     pub fn transition_matrix(&self) -> Option<&TransitionMatrix> {
         self.transition_matrix.as_ref()
     }
 
-    /// Get the emission probabilities
+    /// Get the emission probability matrix B
+    ///
+    /// Shape: `(n_states, n_symbols)` where `B[i,k] = P(obs = k | state = i)`
+    ///
+    /// Returns `None` if the model has not been fitted.
     pub fn emission_prob(&self) -> Option<&Array2<f64>> {
         self.emission_prob.as_ref()
     }
@@ -68,6 +169,14 @@ impl MultinomialHMM {
     }
 
     /// Compute emission probabilities for all observations and states
+    ///
+    /// # Arguments
+    ///
+    /// * `observations` - Observation sequence of shape (n_samples, 1)
+    ///
+    /// # Returns
+    ///
+    /// Emission probabilities of shape (n_samples, n_states)
     fn compute_emission_probs(&self, observations: &Array2<f64>) -> Result<Array2<f64>> {
         let n_samples = observations.nrows();
         let mut emission_probs = Array2::zeros((n_samples, self.n_states));
@@ -77,14 +186,11 @@ impl MultinomialHMM {
         })?;
 
         for t in 0..n_samples {
-            // Observations are expected to be single discrete values per sample
-            // but the trait uses Array2<f64> (n_samples, n_features_per_sample)
-            // For Multinomial, we expect n_features_per_sample to be 1, or we take the first column
             let obs_val = observations[[t, 0]] as usize;
-            if obs_val >= self.n_features {
+            if obs_val >= self.n_symbols {
                 return Err(HmmError::InvalidParameter(format!(
-                    "Observation index {} exceeds n_features {}",
-                    obs_val, self.n_features
+                    "Observation index {} exceeds n_symbols {}",
+                    obs_val, self.n_symbols
                 )));
             }
 
@@ -96,7 +202,7 @@ impl MultinomialHMM {
         Ok(emission_probs)
     }
 
-    /// Initialize parameters if they are not set
+    /// Initialize parameters with uniform distributions if not already set
     fn initialize_parameters(&mut self) -> Result<()> {
         if self.start_prob.is_none() {
             self.start_prob = Some(Array1::from_elem(self.n_states, 1.0 / self.n_states as f64));
@@ -111,8 +217,8 @@ impl MultinomialHMM {
 
         if self.emission_prob.is_none() {
             self.emission_prob = Some(Array2::from_elem(
-                (self.n_states, self.n_features),
-                1.0 / self.n_features as f64,
+                (self.n_states, self.n_symbols),
+                1.0 / self.n_symbols as f64,
             ));
         }
 
@@ -153,13 +259,16 @@ impl MultinomialHMM {
         Ok(xi)
     }
     /// Update emission probabilities based on gamma (M-step)
+    ///
+    /// Uses the accumulated gamma values to re-estimate emission probabilities
+    /// using maximum likelihood estimation.
     fn update_emission_parameters(
         &mut self,
         observations: &Array2<f64>,
         gamma: &Array2<f64>,
     ) -> Result<()> {
         let n_samples = observations.nrows();
-        let mut emission_prob = Array2::zeros((self.n_states, self.n_features));
+        let mut emission_prob = Array2::zeros((self.n_states, self.n_symbols));
 
         for i in 0..self.n_states {
             let mut denom = 0.0;
@@ -170,13 +279,13 @@ impl MultinomialHMM {
             }
 
             if denom > 0.0 {
-                for j in 0..self.n_features {
+                for j in 0..self.n_symbols {
                     emission_prob[[i, j]] /= denom;
                 }
             } else {
                 // If a state is never visited, set uniform emission probabilities
-                for j in 0..self.n_features {
-                    emission_prob[[i, j]] = 1.0 / self.n_features as f64;
+                for j in 0..self.n_symbols {
+                    emission_prob[[i, j]] = 1.0 / self.n_symbols as f64;
                 }
             }
         }
@@ -191,8 +300,12 @@ impl HiddenMarkovModel for MultinomialHMM {
         self.n_states
     }
 
+    /// Returns the number of symbols (vocabulary size)
+    ///
+    /// Note: For MultinomialHMM, this returns `n_symbols` (the vocabulary size),
+    /// not the number of observation dimensions.
     fn n_features(&self) -> usize {
-        self.n_features
+        self.n_symbols
     }
 
     fn fit(&mut self, observations: &Array2<f64>, lengths: Option<&[usize]>) -> Result<()> {
@@ -202,13 +315,13 @@ impl HiddenMarkovModel for MultinomialHMM {
             ));
         }
 
-        // Validate observations (for Multinomial, we check if they are within [0, n_features))
+        // Validate observations: must be integers in [0, n_symbols)
         for t in 0..observations.nrows() {
             let obs_val = observations[[t, 0]];
-            if obs_val < 0.0 || obs_val >= self.n_features as f64 || obs_val.fract() != 0.0 {
+            if obs_val < 0.0 || obs_val >= self.n_symbols as f64 || obs_val.fract() != 0.0 {
                 return Err(HmmError::InvalidParameter(format!(
                     "Invalid observation at row {}: {}. Must be integer in [0, {})",
-                    t, obs_val, self.n_features
+                    t, obs_val, self.n_symbols
                 )));
             }
         }
@@ -381,7 +494,7 @@ impl HiddenMarkovModel for MultinomialHMM {
         let trans_mat = self.transition_matrix.as_ref().unwrap();
         let emission_prob = self.emission_prob.as_ref().unwrap();
 
-        // Sample initial state
+        // Sample initial state from π
         let mut current_state = 0;
         let mut cumsum = 0.0;
         let r: f64 = rng.random();
@@ -394,10 +507,10 @@ impl HiddenMarkovModel for MultinomialHMM {
         }
         states[0] = current_state;
 
-        // Sample initial observation
+        // Sample initial observation from B[current_state, :]
         let r_obs_init: f64 = rng.random();
         let mut cumsum_obs = 0.0;
-        for j in 0..self.n_features {
+        for j in 0..self.n_symbols {
             cumsum_obs += emission_prob[[current_state, j]];
             if r_obs_init < cumsum_obs {
                 observations[[0, 0]] = j as f64;
@@ -407,7 +520,7 @@ impl HiddenMarkovModel for MultinomialHMM {
 
         // Sample remaining states and observations
         for t in 1..n_samples {
-            // Sample next state
+            // Sample next state from A[current_state, :]
             let mut next_state = 0;
             let mut cumsum_state = 0.0;
             let r_state: f64 = rng.random();
@@ -421,10 +534,10 @@ impl HiddenMarkovModel for MultinomialHMM {
             current_state = next_state;
             states[t] = current_state;
 
-            // Sample observation
+            // Sample observation from B[current_state, :]
             let r_obs: f64 = rng.random();
             let mut cumsum_obs = 0.0;
-            for j in 0..self.n_features {
+            for j in 0..self.n_symbols {
                 cumsum_obs += emission_prob[[current_state, j]];
                 if r_obs < cumsum_obs {
                     observations[[t, 0]] = j as f64;
@@ -446,7 +559,8 @@ mod tests {
     fn test_multinomial_hmm_new() {
         let hmm = MultinomialHMM::new(3, 5);
         assert_eq!(hmm.n_states(), 3);
-        assert_eq!(hmm.n_features(), 5);
+        assert_eq!(hmm.n_symbols(), 5);
+        assert_eq!(hmm.n_features(), 5); // n_features returns n_symbols for trait compatibility
         assert!(!hmm.is_fitted());
     }
 
@@ -460,6 +574,37 @@ mod tests {
     }
 
     #[test]
+    fn test_multinomial_hmm_fit_empty_observations() {
+        let mut hmm = MultinomialHMM::new(2, 3);
+        let observations = ndarray::Array2::<f64>::zeros((0, 1));
+        assert!(hmm.fit(&observations, None).is_err());
+    }
+
+    #[test]
+    fn test_multinomial_hmm_fit_invalid_observation() {
+        let mut hmm = MultinomialHMM::new(2, 3);
+        // Observation 5.0 is out of range [0, 3)
+        let observations = array![[0.0], [1.0], [5.0]];
+        assert!(hmm.fit(&observations, None).is_err());
+    }
+
+    #[test]
+    fn test_multinomial_hmm_fit_non_integer_observation() {
+        let mut hmm = MultinomialHMM::new(2, 3);
+        // Observation 1.5 is not an integer
+        let observations = array![[0.0], [1.5], [2.0]];
+        assert!(hmm.fit(&observations, None).is_err());
+    }
+
+    #[test]
+    fn test_multinomial_hmm_fit_negative_observation() {
+        let mut hmm = MultinomialHMM::new(2, 3);
+        // Negative observation
+        let observations = array![[0.0], [-1.0], [2.0]];
+        assert!(hmm.fit(&observations, None).is_err());
+    }
+
+    #[test]
     fn test_multinomial_hmm_predict() {
         let mut hmm = MultinomialHMM::new(2, 2);
         let observations = array![[0.0], [1.0], [0.0]];
@@ -467,6 +612,13 @@ mod tests {
 
         let predictions = hmm.predict(&observations).unwrap();
         assert_eq!(predictions.len(), 3);
+    }
+
+    #[test]
+    fn test_multinomial_hmm_predict_not_fitted() {
+        let hmm = MultinomialHMM::new(2, 2);
+        let observations = array![[0.0], [1.0]];
+        assert!(hmm.predict(&observations).is_err());
     }
 
     #[test]
@@ -480,6 +632,13 @@ mod tests {
     }
 
     #[test]
+    fn test_multinomial_hmm_score_not_fitted() {
+        let hmm = MultinomialHMM::new(2, 2);
+        let observations = array![[0.0], [1.0]];
+        assert!(hmm.score(&observations).is_err());
+    }
+
+    #[test]
     fn test_multinomial_hmm_sample() {
         let mut hmm = MultinomialHMM::new(2, 3);
         let observations = array![[0.0], [1.0], [2.0]];
@@ -489,8 +648,123 @@ mod tests {
         assert_eq!(sampled_obs.nrows(), 10);
         assert_eq!(sampled_states.len(), 10);
 
+        // All sampled observations should be valid symbols
         for i in 0..10 {
-            assert!(sampled_obs[[i, 0]] >= 0.0 && sampled_obs[[i, 0]] < 3.0);
+            let obs = sampled_obs[[i, 0]];
+            assert!(obs >= 0.0 && obs < 3.0);
+            assert_eq!(obs.fract(), 0.0); // Should be integer
+        }
+
+        // All sampled states should be valid
+        for &state in sampled_states.iter() {
+            assert!(state < 2);
+        }
+    }
+
+    #[test]
+    fn test_multinomial_hmm_sample_not_fitted() {
+        let hmm = MultinomialHMM::new(2, 3);
+        assert!(hmm.sample(10).is_err());
+    }
+
+    #[test]
+    fn test_multinomial_hmm_multiple_sequences() {
+        let mut hmm = MultinomialHMM::new(2, 3);
+        
+        // Two sequences concatenated
+        let observations = array![
+            [0.0], [1.0], [2.0],  // Sequence 1
+            [2.0], [1.0], [0.0]   // Sequence 2
+        ];
+        let lengths = vec![3, 3];
+
+        assert!(hmm.fit(&observations, Some(&lengths)).is_ok());
+        assert!(hmm.is_fitted());
+
+        // Verify we can predict and score
+        let predictions = hmm.predict(&observations).unwrap();
+        assert_eq!(predictions.len(), 6);
+
+        let score = hmm.score(&observations).unwrap();
+        assert!(score < 0.0);
+    }
+
+    #[test]
+    fn test_multinomial_hmm_multiple_sequences_different_lengths() {
+        let mut hmm = MultinomialHMM::new(2, 4);
+        
+        // Three sequences with different lengths
+        let observations = array![
+            [0.0], [1.0],              // Sequence 1 (length 2)
+            [2.0], [3.0], [0.0],       // Sequence 2 (length 3)
+            [1.0], [2.0], [3.0], [0.0] // Sequence 3 (length 4)
+        ];
+        let lengths = vec![2, 3, 4];
+
+        assert!(hmm.fit(&observations, Some(&lengths)).is_ok());
+        assert!(hmm.is_fitted());
+    }
+
+    #[test]
+    fn test_multinomial_hmm_decode() {
+        let mut hmm = MultinomialHMM::new(2, 3);
+        let observations = array![[0.0], [1.0], [2.0], [0.0]];
+        hmm.fit(&observations, None).unwrap();
+
+        let (log_prob, states) = hmm.decode(&observations).unwrap();
+        assert!(log_prob < 0.0);
+        assert_eq!(states.len(), 4);
+    }
+
+    #[test]
+    fn test_multinomial_hmm_getters() {
+        let mut hmm = MultinomialHMM::new(2, 3);
+        let observations = array![[0.0], [1.0], [2.0]];
+        hmm.fit(&observations, None).unwrap();
+
+        // Check that all parameters are available after fitting
+        assert!(hmm.start_prob().is_some());
+        assert!(hmm.transition_matrix().is_some());
+        assert!(hmm.emission_prob().is_some());
+
+        // Check dimensions
+        let start_prob = hmm.start_prob().unwrap();
+        assert_eq!(start_prob.len(), 2);
+
+        let trans_mat = hmm.transition_matrix().unwrap();
+        assert_eq!(trans_mat.shape(), &[2, 2]);
+
+        let emission_prob = hmm.emission_prob().unwrap();
+        assert_eq!(emission_prob.shape(), &[2, 3]);
+    }
+
+    #[test]
+    fn test_multinomial_hmm_emission_probabilities_sum_to_one() {
+        let mut hmm = MultinomialHMM::new(2, 4);
+        let observations = array![[0.0], [1.0], [2.0], [3.0], [0.0], [1.0]];
+        hmm.fit(&observations, None).unwrap();
+
+        let emission_prob = hmm.emission_prob().unwrap();
+        
+        // Each row should sum to approximately 1
+        for i in 0..2 {
+            let row_sum: f64 = emission_prob.row(i).sum();
+            assert!((row_sum - 1.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_multinomial_hmm_transition_probabilities_sum_to_one() {
+        let mut hmm = MultinomialHMM::new(3, 4);
+        let observations = array![[0.0], [1.0], [2.0], [3.0], [0.0], [1.0]];
+        hmm.fit(&observations, None).unwrap();
+
+        let trans_mat = hmm.transition_matrix().unwrap();
+        
+        // Each row should sum to approximately 1
+        for i in 0..3 {
+            let row_sum: f64 = trans_mat.row(i).sum();
+            assert!((row_sum - 1.0).abs() < 1e-6);
         }
     }
 }

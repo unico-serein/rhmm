@@ -4,8 +4,8 @@ use crate::algorithms::{backward_algorithm, compute_gamma, forward_algorithm, vi
 use crate::base::{HiddenMarkovModel, InitialProbs, TransitionMatrix};
 use crate::errors::{HmmError, Result};
 use crate::utils::{
-    validate_observations, validate_probability_vector, validate_transition_matrix,
-    split_sequences, default_lengths,
+    default_lengths, split_sequences, validate_observations, validate_probability_vector,
+    validate_transition_matrix,
 };
 use ndarray::{Array1, Array2, Axis};
 use rand::Rng;
@@ -405,8 +405,10 @@ impl HiddenMarkovModel for BetaHMM {
         }
 
         // Get sequence lengths (default to single sequence if not provided)
-        let lengths_vec = lengths.map(|l| l.to_vec()).unwrap_or_else(|| default_lengths(observations.nrows()));
-        
+        let lengths_vec = lengths
+            .map(|l| l.to_vec())
+            .unwrap_or_else(|| default_lengths(observations.nrows()));
+
         // Split observations into sequences
         let sequences = split_sequences(observations, &lengths_vec)?;
 
@@ -443,25 +445,25 @@ impl HiddenMarkovModel for BetaHMM {
 
         for _iter in 0..max_iter {
             let mut total_log_prob = 0.0;
-            
+
             // Accumulators for statistics across all sequences
             let mut start_prob_acc = Array1::zeros(self.n_states);
             let mut trans_acc = Array2::zeros((self.n_states, self.n_states));
             let mut gamma_acc = Array2::zeros((observations.nrows(), self.n_states));
             let mut xi_acc = Vec::new();
-            
+
             let start_prob = self.start_prob.as_ref().unwrap();
             let trans_mat = self.transition_matrix.as_ref().unwrap();
-            
+
             let mut row_offset = 0;
-            
+
             // Process each sequence independently
             for seq in &sequences {
                 let seq_len = seq.nrows();
-                
+
                 // Convert ArrayView2 to owned Array2 for emission computation
                 let seq_owned = seq.to_owned();
-                
+
                 // E-step: Compute emission probabilities for this sequence
                 let emission_probs = self.compute_emission_probs(&seq_owned)?;
 
@@ -475,7 +477,7 @@ impl HiddenMarkovModel for BetaHMM {
 
                 // Compute gamma (state occupation probabilities)
                 let gamma = compute_gamma(&alpha, &beta)?;
-                
+
                 // Copy gamma to accumulator at correct position
                 for t in 0..seq_len {
                     for i in 0..self.n_states {
@@ -490,21 +492,21 @@ impl HiddenMarkovModel for BetaHMM {
 
                 // Compute xi (state transition probabilities) for this sequence
                 let xi = Self::compute_xi(&alpha, &beta, trans_mat, &emission_probs)?;
-                
+
                 // Accumulate transition counts (don't cross sequence boundaries)
-                for t in 0..seq_len - 1 {
+                for xi_t in xi.iter().take(seq_len - 1) {
                     for i in 0..self.n_states {
                         for j in 0..self.n_states {
-                            trans_acc[[i, j]] += xi[t][[i, j]];
+                            trans_acc[[i, j]] += xi_t[[i, j]];
                         }
                     }
                 }
-                
+
                 // Store xi for this sequence
                 for xi_t in xi {
                     xi_acc.push(xi_t);
                 }
-                
+
                 row_offset += seq_len;
             }
 
@@ -515,7 +517,7 @@ impl HiddenMarkovModel for BetaHMM {
             prev_log_prob = total_log_prob;
 
             // M-step: Update parameters using accumulated statistics
-            
+
             // Update initial state probabilities
             if let Some(ref mut start_prob) = self.start_prob {
                 let sum: f64 = start_prob_acc.sum();

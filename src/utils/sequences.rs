@@ -117,13 +117,7 @@ mod tests {
 
     #[test]
     fn test_split_sequences_valid() {
-        let obs = array![
-            [1.0, 2.0],
-            [3.0, 4.0],
-            [5.0, 6.0],
-            [7.0, 8.0],
-            [9.0, 10.0]
-        ];
+        let obs = array![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0], [9.0, 10.0]];
         let lengths = vec![2, 3];
         let sequences = split_sequences(&obs, &lengths).unwrap();
 
